@@ -42,6 +42,7 @@ my $MSA_Software			= $query->param("MSA_Software");
 my $FilterMSA_Method		= $query->param("FilterMSA_Method");
 my $Tree_Method				= $query->param("Tree_Method");
 my $OriginJobID 			= $query->param("OriginJobID");
+my $countsType 				= $query->param("countsType");
 my $rerun 					= ( $OriginJobID eq "None" ? "Off" : "On. Original run ID: $OriginJobID" );
 
 
@@ -265,7 +266,7 @@ if( $pid == 0 )
 	#	python /bioseq/chromEvol/Chromevol_scripts/Chromevol_server.py /bioseq/data/results/chromEvol/1548663671 /bioseq/data/results/chromEvol/1548663671/tree_100 /bioseq/data/results/chromEvol/1548663671/1548663671.counts
 	
 	#my $cmd .= "python $cromevol_scripts_pth/Chromevol_server.py $curJobdir $curJobdir/TreeFile $curJobdir/countsFile";
-	my $cmd .= "python $cromevol_scripts_pth/ChromEvol_getCCDBCounts.py $fTreeFile $curJobdir 0";
+	my $cmd .= "python $cromevol_scripts_pth/ChromEvol_getCCDBCounts.py $fTreeFile $curJobdir 0 $countsType";
  
 	print QSUB_SH "$cmd\n";
 	close (QSUB_SH);
@@ -299,7 +300,6 @@ if( $pid == 0 )
 
 # redirecting client to results page
 my $redirectedURL = chromEvol_CONSTS_and_Functions::RESULTS_COUNTS_PAGE_URL."?jobId=";
-#my $redirectedURL = "/DownloadCounts.html?jobId=";
 $redirectedURL = $redirectedURL.$jobId;
 $redirectedURL .= "&jobTitle=".$jobTitle;
 

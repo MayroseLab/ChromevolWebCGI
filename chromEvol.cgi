@@ -7,6 +7,7 @@ use CGI::Carp qw(fatalsToBrowser);
 use File::Basename;
 use File::Path; 
 use File::Slurp;
+use JSON::XS;
 
 use lib "../";
 use lib "/bioseq/chromEvol";
@@ -24,7 +25,6 @@ my $jobId 		= $^T;
 my $cromevol_scripts_pth = chromEvol_CONSTS_and_Functions::CHROMEVOL_SCRIPTS_PATH;
 
 my $curJobdir 		= chromEvol_CONSTS_and_Functions::RESULTS_DIR_ABSOLUTE_PATH."/$jobId";
-#my $curJobdir 		= chromEvol_CONSTS_and_Functions::RESULTS_DIR_ABSOLUTE_PATH.$jobId;
 my $log 			= "$curJobdir/".chromEvol_CONSTS_and_Functions::LOG_FILE;
 my $fnameParamsTxt	= "$curJobdir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_TXT;
 my $fnameParamsHtml	= "$curJobdir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_HTML;
@@ -58,19 +58,8 @@ my $fUserCountsFile		= $query->param("CountsFile_txt");
 my $param_radio_one			= $query->param("radio-one");
 my $param_ploidy_ON			=$query->param("ploidy_ON");
 
-
-my $param_BaseNum			= $query->param("model_BASE_NUM");
-my $param_BaseNumDuple		= $query->param("model_BASE_NUM_DUPL");
-my $param_ConstRateNoDuple	= $query->param("model_CONST_RATE_NO_DUPL");
-my $param_ConstRateDemiEst	= $query->param("model_CONST_RATE_DEMI_EST");
-my $param_ConstRateDemi		= $query->param("model_CONST_RATE_DEMI");
-my $param_ConstRate			= $query->param("model_CONST_RATE");
-my $param_All				= $query->param("model_ALL");
-my $param_LinearRate		= $query->param("model_LINEAR_RATE");
-my $param_LinearRateNoDuple= $query->param("model_LINEAR_RATE_NO_DUPL");
-my $param_LinearRateDemi	= $query->param("model_LINEAR_RATE_DEMI");
-my $param_LinearRateDemiEst	= $query->param("model_LINEAR_RATE_DEMI_EST");
 my $param_NumberOfTrees		= $query->param("NumberOfTrees");
+my $param_models_json 		= $query->param("definedModels");
 
 #Get params for Model Adequacy:
 my $param_Adequacy			= $query->param("MA_AdequacyTest"); # AdequacyTest_user, ChromBestModel, AllModels
@@ -79,49 +68,57 @@ if ($param_Adequacy eq "AdequacyTest_user"){
 	my $param_MA_UserModel			= $query->param("MA_userModelSelect");
 
 }
+	
+#Create file with defined models:
+my $defined_models_file = "$curJobdir/defined_models.txt";
+my $arrayref = decode_json $param_models_json;
+my @json = @{$arrayref};
 
-
-
-#Create file with selected models:
-my $user_models_file = "$curJobdir/selected_models.txt";
-my $models_string="";
-
-open(MOD_FILE,">$user_models_file");
+open(DEF_MOD_FILE,">$defined_models_file");
+my $k;
+my $v;
+my $js;
 my $comma = "";
-if ($param_All eq "On") { $models_string = 'ALL';}
-else { # josef - replace model names
-	if ($param_BaseNum eq "on") { 
-        print MOD_FILE $comma."DysBnum"; $models_string = $models_string . 'BASE_NUM,';
-        $comma = ",";
-    }
-	if ($param_BaseNumDuple eq "on") { 
-		print MOD_FILE $comma."DysBnumDup"; $models_string = $models_string . 'BASE_NUM_DUPL,';
-		$comma = ",";
+my $count = 1;
+foreach $js ( @json ) {
+	my %data = %{$js};
+	$comma = "";
+	# print name
+	print DEF_MOD_FILE "$data{'name'}: ";
+	while ( ($k,$v) = each %data ) {
+		if ($v != 0) {
+			my $v_str;
+			if ($v == 1) {
+				$v_str = 'constant';
+			}
+			elsif ($v == -2){
+				$v_str = 'duplication rate';
+			}
+			else {
+				$v_str = 'linear';
+			}
+			
+			# use UI names
+			my $UI_name;
+			
+			use Switch;
+			switch($k) {
+				case "_baseNumberR"		{ $UI_name = "Base (monoploid) number addition rate" }
+				case "_duplConstR"		{ $UI_name = "Duplication rate" }
+				case "_gainConstR"		{ $UI_name = "Ascending dysploidy rate" }
+				case "_lossConstR"		{ $UI_name = "Descending dysploidy rate" }
+				case "_demiPloidyR"		{ $UI_name = "Duplication by 1.5 rate" }
+			}
+			
+			print DEF_MOD_FILE $comma."$UI_name = $v_str";
+			$comma = ", ";
+		}
 	}
-	if ($param_ConstRateNoDuple eq "on") { 
-		print MOD_FILE $comma."Dys"; $models_string = $models_string . 'CONST_RATE_NO_DUPL,';
-		$comma = ",";
-	}
-	if ($param_ConstRateDemiEst eq "on") { 
-		print MOD_FILE $comma."DysDupDem"; $models_string = $models_string . 'CONST_RATE_DEMI_EST,';
-		$comma = ",";
-	}
-	if ($param_ConstRateDemi eq "on") { 
-		print MOD_FILE $comma."DysDupDem="; $models_string = $models_string . 'CONST_RATE_DEMI,';
-		$comma = ",";
-	}
-	if ($param_ConstRate eq "on") { 
-		print MOD_FILE $comma."DysDup"; $models_string = $models_string . 'CONST_RATE,';
-		$comma = ",";
-	}
-	if ($param_LinearRate eq "on") { print MOD_FILE "LINEAR_RATE,";  $models_string = $models_string . 'LINEAR_RATE,';}
-	if ($param_LinearRateNoDuple eq "on") { print MOD_FILE "LINEAR_RATE_NO_DUPL,";  $models_string = $models_string . 'LINEAR_RATE_NO_DUPL,';}
-	if ($param_LinearRateDemi eq "on") { print MOD_FILE "LINEAR_RATE_DEMI,";  $models_string = $models_string . 'LINEAR_RATE_DEMI,';}
-	if ($param_LinearRateDemiEst eq "on") { print MOD_FILE "LINEAR_RATE_DEMI_EST,";  $models_string = $models_string . 'LINEAR_RATE_DEMI_EST,';}
+	print DEF_MOD_FILE"\n";
+	$count += 1;
 }
-close (MOD_FILE);
-	
-	
+close (DEF_MOD_FILE);
+
 
 my $runModels_param = $query->param("ModelSelect");
 
@@ -275,6 +272,15 @@ foreach my $name ( @names )
 		WriteToFile($fnameParamsTxt, $AllTreesPaths);
 	}
 }
+# former PIP params 
+WriteToFile($fnameParamsTxt, '_treesFile' . ":" . $fTreeFile);
+WriteToFile($fnameParamsTxt, '_dataFile' . ":" . $fCountsFile);
+WriteToFile($fnameParamsTxt, '_outDir' . ":" . $curJobdir.'/chromevol_out');
+WriteToFile($fnameParamsTxt, '_name' . ":" . $jobId);
+WriteToFile($fnameParamsTxt, '_paramTemplates' . ":" . $chromevol_param_templates);
+WriteToFile($fnameParamsTxt, '_chromevolExe' . ":" . $chromevol_exe_path.'/chromEvol.exe');
+WriteToFile($fnameParamsTxt, '_cpusNum' . ":" . "1");
+#WriteToFile($fnameParamsTxt, '_newModels' . ":" . $param_models_json);
 
 # creating cur job directory
 mkpath($curJobdir);
@@ -325,7 +331,10 @@ my $serverName 		= chromEvol_CONSTS_and_Functions::SERVER_NAME;
 my $pythonModule	= chromEvol_CONSTS_and_Functions::PYTHON_MODULE_TO_LOAD;
 my $perlModule		= chromEvol_CONSTS_and_Functions::PERL_MODULE_TO_LOAD;
 
-
+# write "In Queue" to status.txt
+open(F_STATUS,">$errLog");
+print F_STATUS "In Queue";
+close (F_STATUS);
 
 my $pid = fork();
 if( $pid == 0 )
@@ -341,22 +350,6 @@ if( $pid == 0 )
 	my $logPath = chromEvol_CONSTS_and_Functions::LOG_DIR_ABSOLUTE_PATH; 
 	$logPath = $logPath.chromEvol_CONSTS_and_Functions::MAIN_PIPELINE_LOG;
 	&WriteToFile( $logPath, "$email_to_address\t$date\t$jobId");
-
-        #creating the PIP control file for chromevol:
-	my $pip_chromevol_file = "$curJobdir/PIP_control";
-	open(PIP_FILE,">$pip_chromevol_file");
-	print PIP_FILE '_treesFile ', "$fTreeFile", "\n"; 
-	print PIP_FILE '_dataFile ', "$fCountsFile", "\n"; 
-	print PIP_FILE '_outDir ' , "$curJobdir",'/chromevol_out',"\n";
-	print PIP_FILE  '_name ' , "$jobId","\n";
-	#print PIP_FILE  '_paramTemplates /groups/itay_mayrose/michaldrori/MD_ChromEvol/power_PARAM_templates/' ,"\n";
-	#print PIP_FILE  '_chromevolExe /groups/itay_mayrose/michaldrori/scripts/chromEvol.exe' ,"\n";
-
-	print PIP_FILE  '_paramTemplates ' , "$chromevol_param_templates","\n";
-	print PIP_FILE  '_chromevolExe ' , "$chromevol_exe_path",'/chromEvol.exe',"\n";
-	print PIP_FILE  '_cpusNum 1',"\n";
-	print PIP_FILE '_runModels ', "$models_string", "\n";
-	close (PIP_FILE);
 		
 	#creating shell script file for lecs2
 	my $qsub_script = "$curJobdir/qsub.sh";
@@ -375,23 +368,14 @@ if( $pid == 0 )
 	print QSUB_SH 'module load ', "$pythonModule","\n";
 	print QSUB_SH 'module load  R/3.5.1',"\n";
 	
-	#my $cmd .= "python /bioseq/oneTwoTree/OneTwoTree.py $fnameUserInput $curJobdir $jobId;";
-	#my $cmd .= "perl $cromevol_scripts_pth/step1_preparation.pl $curJobdir/PIP_control";
-	#	python /bioseq/chromEvol/Chromevol_scripts/Chromevol_server.py /bioseq/data/results/chromEvol/1548663671 /bioseq/data/results/chromEvol/1548663671/tree_100 /bioseq/data/results/chromEvol/1548663671/1548663671.counts
-	
-	#my $cmd .= "python $cromevol_scripts_pth/Chromevol_server.py $curJobdir $curJobdir/TreeFile $curJobdir/countsFile";
-	#my $cmd .= "python $cromevol_scripts_pth/ChromEvol_main.py $curJobdir $curJobdir/PIP_control $param_NumberOfTrees";
-	my $cmd .= "python $cromevol_scripts_pth/ChromEvol_main.py $curJobdir $curJobdir/PIP_control >$curJobdir/out.txt 2> $curJobdir/err.txt";
+	my $cmd .= "python $cromevol_scripts_pth/ChromEvol_main.py $curJobdir $fnameParamsTxt >$curJobdir/out.txt 2> $curJobdir/err.txt";
 
-	
 	print QSUB_SH "$cmd\n";
 	close (QSUB_SH);
     
    
 	my $qsubCmd =  'ssh bioseq@powerlogin qsub '."$qsub_script";
 
-
-	
 	# this is not done here, but by OTT at end of run
 	#my $cmdEmail = "perl /bioseq/$serverName/sendLastEmail.pl --toEmail $email_to_address --id $jobId;";
 	#print QSUB_SH "$cmdEmail\n";
@@ -416,7 +400,6 @@ if( $pid == 0 )
 
 # redirecting client to results page
 my $redirectedURL = chromEvol_CONSTS_and_Functions::RESULTS_PAGE_URL."?jobId=";
-#my $redirectedURL = "http://chromevol.tau.ac.il/results_josef.html?jobId=";
 $redirectedURL = $redirectedURL.$jobId;
 $redirectedURL .= "&jobTitle=".$jobTitle;
 

@@ -10,10 +10,16 @@ use List::Util qw(first);
 use List::MoreUtils qw(any  first_index);
 
 use lib "/bioseq/chromEvol";
-#use lib "/bioseq/chromEvol/webServer_files";
-#use lib "/bioseq/bioSequence_scripts_and_constants";
 use lib "../";
 use chromEvol_CONSTS_and_Functions;
+
+sub trim($)
+{
+        my $string = shift;
+        $string =~ s/^[\s\t]+//;
+        $string =~ s/[\s\t]+$//;
+        return $string;
+}
 
 my $query = new CGI;
 my $jobId = $query->param('jobId');
@@ -25,8 +31,6 @@ $jsonData{'jobId'} = $jobId;
 
 $jsonData{'TREE_models'} = [];
 
-
-#my $curJobDir = chromEvol_CONSTS_and_Functions::RESULTS_LINK."/$jobId";
 my $curJobDir = chromEvol_CONSTS_and_Functions::RESULTS_DIR_ABSOLUTE_PATH."/$jobId";
 my $log 	  = "$curJobDir/".chromEvol_CONSTS_and_Functions::LOG_FILE;
 
@@ -44,26 +48,6 @@ for (my $indx = 1; $indx < 11; $indx++){
 		#$jsonData{"CCDDFF_$indx"} = 'NONE';
 	}
 }
-
-#my $model_file = "$curJobDir/ChromEvol_Tree_1/ChosenModel_LowAIC.txt";
-#if (-e $model_file)
-#{
-#	my $line = read_file($model_file);
-#	$jsonData{'CCDDFF'} = $line;
-#}
-
-#my $CCDDFF = &ReadFromFile("$curJobDir/ChromEvol_Tree_1/ChosenModel_LowAIC.txt", ""); 
-#my @models_arr;
-#for (my $indx = 1; $indx < 11; $indx++){
-#	my $model_x = &ReadFromFile("$curJobDir/ChromEvol_Tree_1/ChosenModel_LowAIC.txt", ""); 
-#	if ($model_x eq 'abc975'){
-#		push(@models_arr,'None');
-#	} else {
-#		push(@models_arr,$model_x);
-#	}
-#}
-#$jsonData{'CCDDFF'} = @models_arr;
-
 
 # checking if jobId is valid
 if (!($jobId =~ /^[0-9]+\z/))
@@ -107,23 +91,22 @@ sub GetResultsData
 	$jsonData{'ModelsNamesArr'}	= &ReadToArrayParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_SELECTED_MODELS,"");  
 	$jsonData{'StatusFlags_Arr'}	= &ReadToArrayParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_STATUS_FLAGS,"");  
 	$jsonData{'BestModelsPerTreeArr'}	= &ReadToArrayParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_BEST_MODELS,"");  
-	$jsonData{'MA_Ploidy_Flags_Arr'}	= &ReadToArrayParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_MA_PLOIDY_FLAGS,"");  
+	$jsonData{'MA_Ploidy_Flags_Arr'}	= &ReadToArrayParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_MA_PLOIDY_FLAGS,"");
+	if (not -e "$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PLOIDY_CSV) {
+		$jsonData{'MA_Ploidy_Flags_Arr'}[0] = 'OFF';
+	}
 	$jsonData{'LinuxJobNumber'}	= &ReadFromFile("$curJobDir/qsub_job_num.dat"); 
-	#$jsonData{'ModelAdequacy'}	= &ReadFromFile("$curJobDir/qsub_job_num.dat"); 
 	$jsonData{'jobStatus'}	= &GetJobStatus($jobId, $curJobDir);
+	$jsonData{'jobStatusMsg'}	= &GetJobStatusMessage($jobId, $curJobDir);
 	$jsonData{'input_files_report'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_INPUT_REPORT, "");
 	$jsonData{'chrom_counts_data'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_CHROM_COUNTS, "");
 	$jsonData{'adequacy_data'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_ADEQUACY, "");
 	$jsonData{'done_file'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_DONE_FILE, "");
 	$jsonData{'pip_control'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PIP, "");
-	
 	$jsonData{'TreesDirArr'}	= &ReadParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_TXT,"TreesDirArr"); 
 	$jsonData{'ploidy_ON'}	= &ReadParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_TXT,"ploidy_ON"); 
 	$jsonData{'radio-one'}	= &ReadParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_TXT,"radio-one"); 
 
-	#my @ArrTreesPaths = split(',', $query->param('TreesDirArr'));
-
-		
 	my $json_data_file = "${curJobDir}/JSON_data.txt";  
 	open (JSON_F,">$json_data_file") or die ("COULD not open JSON data file");
 	print JSON_F "jobId - ", $jsonData{'jobId'},"\n"; 
@@ -131,7 +114,8 @@ sub GetResultsData
 	print JSON_F "ModelsNamesArr - ",$jsonData{'ModelsNamesArr'},"\n";    
 	print JSON_F "BestModelsPerTreeArr - ",$jsonData{'BestModelsPerTreeArr'},"\n";    
 	print JSON_F "LinuxJobNumber - ",$jsonData{'LinuxJobNumber'},"\n";         
-	print JSON_F "jobStatus - ",$jsonData{'jobStatus'},"\n";    
+	print JSON_F "jobStatus - ",$jsonData{'jobStatus'},"\n";
+	print JSON_F "jobStatusMsg - ",$jsonData{'jobStatusMsg'},"\n";
 	print JSON_F "pip_control - ",$jsonData{'pip_control'},"\n";    
 	print JSON_F "input_files_report - ",$jsonData{'input_files_report'},"\n";    
 	print JSON_F "chrom_counts_data - ",$jsonData{'chrom_counts_data'},"\n";    
@@ -186,84 +170,40 @@ sub GetJobStatus
 {
 	my ($jobId, $curJobDir) = @_;
 	
-	# error exist?
+	
+	# look for END.txt
+	my $EndFile = chromEvol_CONSTS_and_Functions::RESULTS_LINK."/$jobId/END.txt";
+	if (-e $EndFile) {
+		my $endStr = ReadFromFile($EndFile, 0);
+		$endStr = trim($endStr);
+		if ($endStr eq "Chromevol run was completed") { 
+			return 'PASS';
+		}
+		else {
+			return 'FAIL';
+		}
+	} 
+	
+	return 'RUNNING';
+}
+
+sub GetJobStatusMessage
+{
+	my ($jobId, $curJobDir) = @_;
+	
+	# read status.txt
 	if (&ReadErrorLogFileStatus($curJobDir))
 	{
 		#sendFailedEmail();
 		return &ReadErrorLogFileStatus($curJobDir);
 	}
-
-	# is job id in queue?
-	#my $qstatCmd = 'ssh bioseq@powerlogin qstat -r ';
-	my $qstatCmd = 'ssh bioseq@powerlogin qstat -w -r -u bioseq';
-	#my $qstat_qw_Cmd = 'ssh bioseq@powerlogin qstat -s p';
-	my $qstat_qw_Cmd = 'ssh bioseq@powerlogin qstat -s'; #removed p since not working on power -> Check how to replace!!
-	#my $qstatCmd = 'ssh bioseq@lecs2 qstat -r';
-	
-	my $qstatCmdResponse = `$qstatCmd`;	
-	my $qstat_qw_CmdResponse = `$qstat_qw_Cmd`;	
-	
-	my @responseLines = split("\n", $qstatCmdResponse);
-	my @response_qw_Lines = split("\n", $qstat_qw_CmdResponse);
-	
-	my $EndFile = chromEvol_CONSTS_and_Functions::RESULTS_LINK."/$jobId/END.txt";
-	if (! -e $EndFile) {
-		return 'Running';
-	#}
-	#
-	#
-	#
-	#if (any { /$jobId/ } @responseLines)
-	#{
-	#	return 'Running';
-	} else {
-		
-		return 'PASS';
-		if (any { /$jobId/ } @response_qw_Lines)
-		{
-			return 'Running';
-		}
-		#} else {
-		#	my $StatusText = &ReadFromFile("$curJobDir/END.txt", "");
-		#	return $StatusText;
-		#}
-	}
-	
- 	# is any output file missing?
-	#my $pathMB		= chromEvol_CONSTS_and_Functions::RESULTS_LINK."/$jobId/SummaryDir/MB_LOG.txt";
-	my $pathTree	= chromEvol_CONSTS_and_Functions::RESULTS_LINK."/$jobId/SummaryDir/Result_Tree.tre";
-	#my $pathFasta	= chromEvol_CONSTS_and_Functions::RESULTS_LINK."/$jobId/SummaryDir/$jobId-concat-aligned.fasta";
-
-	#if (! -f $pathMB)		{ return 'Failed'; }
-	
-	
-	if (! -f $pathTree)
-	{ 
-		#sendFailedEmail();
-		#return 'Failed'; 
-		my $StatusText = &ReadFromFile("$curJobDir/SummaryDir/FinalStatus.txt", ""); 
-		#return 'BlaBlaBla'; 
-		return $StatusText; 
-	}
-	
-	#if (! -f $pathFasta)	
-	{ 
-		my $StatusText = &ReadFromFile("$curJobDir/SummaryDir/FinalStatus.txt", ""); 	
-		return $StatusText;  
-	}
-	
-	return 'Finished'; # last email is sent from OTT...sh , not from here
 }
+
 
 sub GetTimeEstimation
 {
 	my ($jobId, $curJobDir) = @_;
 	
-	# error exist?
-	#if (-e "$curJobDir/SummaryDir/FinalStatus.txt")
-	#{ 
-	#	return '';
-	#}else {
 	if (-e "$curJobDir/calc_time_vars.txt")
 	{
 		#Read from file and send back
@@ -272,7 +212,6 @@ sub GetTimeEstimation
 	} else {
 		return '...Calculating estimated running time';
 	}
-	#}
 }
 
 sub ReadErrorLogFileStatus
@@ -292,8 +231,6 @@ sub ReadErrorLogFileStatus
 	}
 	return $errStatus;
 }
-
-
 
 sub sendFailedEmail
 {
@@ -315,7 +252,6 @@ sub sendFailedEmail
 	`perl /bioseq/chromEvol/sendLastEmail.pl --jobTitle "" --toEmail $email --id $jobId`;
 	
 }
-
 
 # last email is sent from OTT...sh , not from here
 =pod
