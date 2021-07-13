@@ -81,6 +81,12 @@ my $json = encode_json(\%jsonData);
 print $query->header();
 print "$json\n";
 
+sub GetRunTime() # in days
+{
+	
+	my $start_run_time = (stat("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_TXT))[9];
+	return (($^T - $start_run_time) / 86400.); 
+}
 
 sub GetResultsData
 {
@@ -99,6 +105,11 @@ sub GetResultsData
 	$jsonData{'jobStatus'}	= &GetJobStatus($jobId, $curJobDir);
 	$jsonData{'jobStatusMsg'}	= &GetJobStatusMessage($jobId, $curJobDir);
 	$jsonData{'input_files_report'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_INPUT_REPORT, "");
+	
+	$jsonData{'ploidy_inference_error'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PLOIDY_ERROR, "");
+	$jsonData{'model_adequacy_error'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_MODEL_ADEQUACY_ERROR, "");
+	$jsonData{'runtime_error'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_RUNTIME_ERROR, "");
+	
 	$jsonData{'chrom_counts_data'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_CHROM_COUNTS, "");
 	$jsonData{'adequacy_data'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_ADEQUACY, "");
 	$jsonData{'done_file'} 	= &ReadFromFile("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_DONE_FILE, "");
@@ -106,6 +117,8 @@ sub GetResultsData
 	$jsonData{'TreesDirArr'}	= &ReadParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_TXT,"TreesDirArr"); 
 	$jsonData{'ploidy_ON'}	= &ReadParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_TXT,"ploidy_ON"); 
 	$jsonData{'radio-one'}	= &ReadParam("$curJobDir/".chromEvol_CONSTS_and_Functions::FILENAME_PARAMS_TXT,"radio-one"); 
+	
+	$jsonData{'runTime'}	= &GetRunTime();
 
 	my $json_data_file = "${curJobDir}/JSON_data.txt";  
 	open (JSON_F,">$json_data_file") or die ("COULD not open JSON data file");
@@ -125,6 +138,7 @@ sub GetResultsData
 	print JSON_F "vTreesDirArr - ",$jsonData{'vTreesDirArr'},"\n";    
 	print JSON_F "ploidy_ON - ",$jsonData{'ploidy_ON'},"\n";    
 	print JSON_F "radio-one - ",$jsonData{'radio-one'},"\n";    
+	print JSON_F "runTime - ",$jsonData{'run-time'},"\n";
 	close (JSON_F);
 	
 	
