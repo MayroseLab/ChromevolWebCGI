@@ -365,8 +365,9 @@ if( $pid == 0 )
 	print QSUB_SH '#PBS -e ', "$curJobdir", '/',"\n";
 	print QSUB_SH '#PBS -o ', "$curJobdir", '/',"\n";
 	print QSUB_SH 'module load ', "$perlModule","\n";
-	print QSUB_SH 'module load ', "$pythonModule","\n";
-	print QSUB_SH 'module load  R/3.5.1',"\n";
+	#print QSUB_SH 'module load ', "$pythonModule","\n";
+	#print QSUB_SH 'module load  R/3.5.1',"\n";
+	print QSUB_SH 'module load  R/4.1.0-josef',"\n";
 	
 	my $cmd .= "python $cromevol_scripts_pth/ChromEvol_main.py $curJobdir $fnameParamsTxt >$curJobdir/out.txt 2> $curJobdir/err.txt";
 
